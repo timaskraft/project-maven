@@ -9,36 +9,175 @@
     <version>1.0</version>
 
     <properties>
-        <maven.compiler.source>18</maven.compiler.source>
-        <maven.compiler.target>18</maven.compiler.target>
+        <jdk.version>18</jdk.version>
+        <project.encoding>UTF-8</project.encoding>
+
+        <plugin.compiler.version>3.1</plugin.compiler.version>
+
+        <plugin.jar.version>3.3.0</plugin.jar.version>
+
+        <distrib.dependency>${project.build.directory}/dependency</distrib.dependency>
     </properties>
 
-    <dependencies>
-
-    </dependencies>
 
     <build>
+
+
         <plugins>
             <!-- Usual compilation -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.10.1</version>
+                <version>${plugin.compiler.version}</version>
                 <configuration>
-                    <encoding>UTF-8</encoding>
+                    <source>${jdk.version}</source>
+                    <target>${jdk.version}</target>
+                    <encoding>${project.encoding}</encoding>
                 </configuration>
             </plugin>
 
-            <!-- Run java-fx app over Maven -->
             <plugin>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-maven-plugin</artifactId>
-                <version>0.0.8</version>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <version>3.1.2</version>
+            </plugin>
+
+            <!-- maven-jar-plugin Позволяет динамически генерировать MANIFEST
+
+                плагин maven-jar-plugin, который сделает jar файл, содержащий код игры и зависимости.
+                В этом плагине нужно сконфигурировать файл MANIFEST.MF, чтоб он содержал секции: Class-Path, Main-Class и Rsrc-Main-Class
+                В Class-Path должны быть прописаны все наши JAR-зависимости.
+                В Main-Class должен быть прописан класс org.eclipse.jdt.internal.jarinjarloader.JarRsrcLoader,
+                 который умеет использовать classpath из JAR-файлов, а также умеет стартовать приложение на JavaFX.
+                В Rsrc-Main-Class должен быть прописан стартовый класс игры (com.javarush.games.racer.RacerGame).
+
+                вот что получилось в MANIFEST:
+                    Manifest-Version: 1.0
+                    Created-By: Maven JAR Plugin 3.4.1
+                    Build-Jdk-Spec: 18
+                    Class-Path: lib/commons-lang3-3.12.0.jar lib/javafx-controls-18.jar lib/
+                     javafx-controls-18-win.jar lib/javafx-graphics-18.jar lib/javafx-graphi
+                     cs-18-win.jar lib/javafx-base-18.jar lib/javafx-base-18-win.jar lib/des
+                     ktop-game-engine-1.0.jar
+                    Main-Class: org.eclipse.jdt.internal.jarinjarloader.JarRsrcLoader
+                    Rsrc-Main-Class: com.javarush.games.racer.RacerGame
+
+                по итогу - Class-Path - (upd - не запускался jar - без указания корневой директории, добавил  <Class-Path>./</Class-Path>
+                           Main-Class  - из секции manifest
+                           Rsrc-Main-Class - добавить в секцию      manifestEntries   - com.javarush.games.racer.RacerGame
+                                        -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.1</version>
                 <configuration>
-                    <mainClass>com.javarush.games.racer.RacerGame</mainClass>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
+                            <mainClass>org.eclipse.jdt.internal.jarinjarloader.JarRsrcLoader</mainClass>
+                        </manifest>
+                        <manifestEntries>
+                            <Class-Path>./</Class-Path>
+                            <Rsrc-Main-Class>com.javarush.games.racer.RacerGame</Rsrc-Main-Class>
+                        </manifestEntries>
+                    </archive>
                 </configuration>
             </plugin>
+
+            <!--В плагине maven-surefire-plugin сделать конфигурацию, чтоб тест StrangeTest не запускался при сборке. Остальные тесты должны выполняться.
+                выключим в секции excludes StrangeTest.java
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <excludes>
+                        <exclude>StrangeTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!--
+                Добавить секцию “resources”, в которой сказать, что собранные JAR-зависимости это ресурс, чтоб плагин maven-jar-plugin сложил их внутрь JAR-файла в папку lib/
+                используею maven-dependency-plugin, настроить (prepare-package): - фазу, перед которой выполнить копирование зависимостей. (Оказалось для включения в jar
+                ресурсов не подходит фаза prepare-package, изменил на generate-resources.)
+                тестовые юниты в билде не нужны - исключаем прописывая includeScope
+            -->
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.1</version>
+                <configuration>
+                    <includeScope>compile</includeScope>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${distrib.dependency}</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
+
+        <!---Добавить секцию “resources”, в которой сказать, что собранные JAR-зависимости это ресурс, чтоб плагин maven-jar-plugin сложил их внутрь JAR-файла в папку targetPath = lib/
+        -->
+
+        <resources>
+            <resource>
+                <directory>
+                    ${distrib.dependency}
+                </directory>
+                <targetPath>lib/</targetPath>
+            </resource>
+        </resources>
+
+
     </build>
+
+    <dependencies>
+        <!-- https://mvnrepository.com/artifact/org.apache.commons/commons-lang3 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.12.0</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.openjfx/javafx-controls -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>18</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-engine -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.8.2</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- i use this command for copy plugin to local repository
+            mvn install:install-file -Dfile=e:\SRC\JAVA\Projects\Module3\project-maven\lib\desktop-game-engine.jar -DgroupId=com.javarush -DartifactId=desktop-game-engine -Dversion=1.0 -Dpackaging=jar -DgeneratePom=tru
+        -->
+        <dependency>
+            <groupId>com.javarush</groupId>
+            <artifactId>desktop-game-engine</artifactId>
+            <version>1.0</version>
+        </dependency>
+
+
+
+    </dependencies>
 
 </project>
